@@ -1,0 +1,19 @@
+<%- include('partials/cabecera', { titulo: 'Reservas' }) %>
+<h1>Reservas confirmadas</h1>
+<p class="resumen">Sesi&oacute;n: <strong><%= usuario.nombre %></strong> (rol <%= usuario.rol %>). Esta vista contiene datos personales de clientes.</p>
+<%- include('partials/consulta', { sql: null }) %>
+<table class="tabla">
+  <thead>
+    <tr><th>#</th><th>Cliente</th><th>DNI</th><th>Correo</th><th>Tour</th><th>Fecha</th><th>Personas</th><th>Total</th></tr>
+  </thead>
+  <tbody>
+    <% reservas.forEach(function (r) { %>
+      <tr>
+        <td><%= r.id %></td><td><%= r.nombres %></td><td><%= r.dni %></td><td><%= r.correo %></td>
+        <td><%= r.tour %></td><td><%= r.fecha %></td><td><%= r.personas %></td>
+        <td>S/ <%= Number(r.total).toFixed(2) %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
+<%- include('partials/pie') %>

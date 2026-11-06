@@ -1,0 +1,16 @@
+{
+  "name": "peru-travel",
+  "version": "1.0.0",
+  "description": "Aplicacion web vulnerable a proposito para el laboratorio de firewall de base de datos (curso de Ciberseguridad)",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "mysql2": "^3.12.0"
+  }
+}

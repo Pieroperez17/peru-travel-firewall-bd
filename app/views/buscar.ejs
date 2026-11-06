@@ -1,0 +1,12 @@
+<%- include('partials/cabecera', { titulo: 'Buscar' }) %>
+<h1>Buscar tours</h1>
+<form class="buscador" action="/buscar" method="get">
+  <input type="text" name="q" value="<%= q %>" placeholder="Tour o destino">
+  <button type="submit">Buscar</button>
+</form>
+<%- include('partials/consulta') %>
+<% if (!error) { %>
+  <p class="resumen"><%= tours.length %> resultado(s)<%= q ? ' para "' + q + '"' : '' %></p>
+  <%- include('partials/tarjetas', { tours: tours }) %>
+<% } %>
+<%- include('partials/pie') %>

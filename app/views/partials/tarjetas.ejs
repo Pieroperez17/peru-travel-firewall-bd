@@ -1,0 +1,14 @@
+<div class="grilla">
+  <% tours.forEach(function (t) { %>
+    <a class="tarjeta" href="/tour?id=<%= t.id %>">
+      <div class="tarjeta-banda region-<%= String(t.region || '').toLowerCase().replace(/[^a-z]/g, '') %>">
+        <span><%= t.region %></span>
+      </div>
+      <div class="tarjeta-cuerpo">
+        <h3><%= t.nombre %></h3>
+        <p class="destino"><%= t.destino %></p>
+        <p class="detalle"><%= t.dias %> d&iacute;a(s) &middot; desde <strong>S/ <%= Number(t.precio).toFixed(2) %></strong></p>
+      </div>
+    </a>
+  <% }) %>
+</div>

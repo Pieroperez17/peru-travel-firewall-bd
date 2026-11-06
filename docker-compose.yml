@@ -1,0 +1,54 @@
+# Laboratorio: Firewall de base de datos con ProxySQL
+# Peru Travel (app vulnerable) -> ProxySQL (firewall de BD) -> MariaDB
+#
+# La base de datos NO publica puertos: solo se llega a ella a traves de ProxySQL.
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: db
+    environment:
+      MARIADB_ROOT_PASSWORD: RootLab2026
+      MARIADB_DATABASE: perutravel
+      MARIADB_USER: perutravel_app
+      MARIADB_PASSWORD: PeruApp2026
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  proxysql:
+    image: proxysql/proxysql:2.7.3
+    container_name: proxysql
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./proxysql/proxysql.cnf:/etc/proxysql.cnf:ro
+    ports:
+      - "127.0.0.1:6033:6033"                  # trafico SQL desde Windows
+      - "${IP_LAB:-192.168.56.1}:6033:6033"    # trafico SQL desde Kali (red Host-Only)
+    restart: unless-stopped
+
+  app:
+    build: ./app
+    image: perutravel-app
+    container_name: perutravel
+    depends_on:
+      - proxysql
+    environment:
+      DB_HOST: proxysql            # la app se conecta al firewall, no a la BD
+      DB_PORT: "6033"
+      DB_USER: perutravel_app
+      DB_PASSWORD: PeruApp2026
+      DB_NAME: perutravel
+      MODO_SEGURO: "${MODO_SEGURO:-0}"   # 0 = consultas vulnerables, 1 = parametrizadas
+      MOSTRAR_SQL: "1"                   # muestra en pantalla la consulta enviada
+    ports:
+      - "127.0.0.1:8080:3000"
+      - "${IP_LAB:-192.168.56.1}:8080:3000"
+    restart: unless-stopped

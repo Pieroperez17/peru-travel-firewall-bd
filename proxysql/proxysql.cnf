@@ -1,0 +1,134 @@
+# ProxySQL como firewall de base de datos para Peru Travel
+# Las reglas 10-39 empiezan DESACTIVADAS (active=0).
+# El comando .\firewall.ps1 on|off las activa o desactiva en caliente.
+# Tras editar este archivo: docker compose up -d --force-recreate proxysql
+
+datadir="/var/lib/proxysql"
+
+admin_variables=
+{
+    admin_credentials="admin:admin;radmin:radmin"
+    mysql_ifaces="0.0.0.0:6032"
+}
+
+mysql_variables=
+{
+    threads=4
+    max_connections=2048
+    interfaces="0.0.0.0:6033"
+    default_schema="perutravel"
+    server_version="10.11.0-MariaDB"
+    monitor_enabled=false
+    firewall_whitelist_enabled=false
+    firewall_whitelist_errormsg="Firewall BD: consulta fuera de la lista blanca"
+    eventslog_filename="consultas.log"
+    eventslog_format=2
+}
+
+mysql_servers=
+(
+    {
+        address="db"
+        port=3306
+        hostgroup=0
+        max_connections=200
+    }
+)
+
+mysql_users=
+(
+    {
+        username="perutravel_app"
+        password="PeruApp2026"
+        default_hostgroup=0
+        default_schema="perutravel"
+        active=1
+    },
+    {
+        username="analista"
+        password="Analista2026"
+        default_hostgroup=0
+        default_schema="perutravel"
+        active=1
+    }
+)
+
+mysql_query_rules=
+(
+    # Caso 5 - Auditoria: registra toda consulta a las tablas sensibles.
+    # Siempre activa y no bloquea (apply=0): deja evidencia en consultas.log
+    {
+        rule_id=5
+        active=1
+        match_digest="\\b(clientes|usuarios)\\b"
+        log=1
+        apply=0
+        comment="Caso 5: auditoria de accesos a clientes y usuarios"
+    },
+
+    # Caso 3 - Sentencias peligrosas (DDL/DCL) con la cuenta de la aplicacion
+    {
+        rule_id=10
+        active=0
+        username="perutravel_app"
+        match_digest="^\\s*(DROP|TRUNCATE|ALTER|GRANT|REVOKE|CREATE\\s+USER)\\b"
+        error_msg="Firewall BD: sentencia DDL/DCL no permitida para la aplicacion"
+        log=1
+        apply=1
+        comment="Caso 3: bloqueo de DDL/DCL"
+    },
+
+    # Caso 1 - Firmas de inyeccion SQL (sobre el digest normalizado)
+    {
+        rule_id=20
+        active=0
+        username="perutravel_app"
+        match_digest="\\bUNION\\s+(ALL\\s+)?SELECT\\b"
+        error_msg="Firewall BD: patron de inyeccion SQL (UNION SELECT)"
+        log=1
+        apply=1
+        comment="Caso 1: UNION SELECT"
+    },
+    {
+        rule_id=21
+        active=0
+        username="perutravel_app"
+        match_digest="\\binformation_schema\\b|\\bmysql\\.user\\b"
+        error_msg="Firewall BD: acceso a metadatos del servidor"
+        log=1
+        apply=1
+        comment="Caso 1: lectura de metadatos"
+    },
+    {
+        rule_id=22
+        active=0
+        username="perutravel_app"
+        match_digest="\\bOR\\s+\\?\\s*=\\s*\\?"
+        error_msg="Firewall BD: patron de inyeccion SQL (condicion siempre verdadera)"
+        log=1
+        apply=1
+        comment="Caso 1: tautologia"
+    },
+    {
+        rule_id=23
+        active=0
+        username="perutravel_app"
+        match_digest="\\b(SLEEP|BENCHMARK)\\s*\\("
+        error_msg="Firewall BD: patron de inyeccion SQL (retardo)"
+        log=1
+        apply=1
+        comment="Caso 1: funciones de retardo"
+    },
+
+    # Caso 4 - Control de acceso por usuario: "analista" no puede leer tablas sensibles
+    {
+        rule_id=30
+        active=0
+        username="analista"
+        match_digest="\\b(clientes|usuarios)\\b"
+        error_msg="Firewall BD: el usuario analista no tiene acceso a datos personales"
+        log=1
+        apply=1
+        comment="Caso 4: tablas sensibles bloqueadas para analista"
+    }
+)

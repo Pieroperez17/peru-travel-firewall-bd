@@ -1,0 +1,44 @@
+<%- include('partials/cabecera', { titulo: 'Tour' }) %>
+<%- include('partials/consulta') %>
+<% if (!error && tours.length === 0) { %>
+  <p class="resumen">No se encontr&oacute; el tour solicitado.</p>
+<% } %>
+<% tours.forEach(function (t) { %>
+  <article class="ficha">
+    <div class="tarjeta-banda region-<%= String(t.region || '').toLowerCase().replace(/[^a-z]/g, '') %>">
+      <span><%= t.region %></span>
+    </div>
+    <div class="ficha-cuerpo">
+      <h1><%= t.nombre %></h1>
+      <p class="destino"><%= t.destino %> &middot; <%= t.dias %> d&iacute;a(s)</p>
+      <p><%= t.descripcion %></p>
+      <p class="precio">S/ <%= Number(t.precio).toFixed(2) %> <small>por persona</small></p>
+    </div>
+  </article>
+<% }) %>
+
+<% if (!error && tours.length > 0) { %>
+<section class="resenas">
+  <h2>Rese&ntilde;as de viajeros</h2>
+  <% if (resenas.length === 0) { %><p class="resumen">A&uacute;n no hay rese&ntilde;as.</p><% } %>
+  <% resenas.forEach(function (r) { %>
+    <div class="resena">
+      <strong><%= r.autor %></strong> <span class="estrellas"><%= '★'.repeat(r.puntaje) %></span>
+      <small><%= r.fecha %></small>
+      <p><%= r.comentario %></p>
+    </div>
+  <% }) %>
+  <form class="form-resena" action="/tour/resena" method="post">
+    <h3>Deja tu rese&ntilde;a</h3>
+    <input type="hidden" name="tour_id" value="<%= tours[0].id %>">
+    <input type="text" name="autor" placeholder="Tu nombre" required>
+    <select name="puntaje">
+      <option value="5">5 estrellas</option><option value="4">4 estrellas</option>
+      <option value="3">3 estrellas</option><option value="2">2 estrellas</option><option value="1">1 estrella</option>
+    </select>
+    <textarea name="comentario" placeholder="Cu&eacute;ntanos tu experiencia" required></textarea>
+    <button type="submit">Publicar</button>
+  </form>
+</section>
+<% } %>
+<%- include('partials/pie') %>
