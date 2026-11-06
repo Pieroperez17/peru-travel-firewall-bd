@@ -14,7 +14,7 @@ La base de datos no publica ningún puerto: solo se llega a ella a través de Pr
 
 ## Componentes
 
-- **app/** — Peru Travel, agencia de turismo ficticia (Node.js + Express + EJS). Vulnerable a inyección SQL en el buscador, el detalle de tours y el login. Con `MODO_SEGURO=1` usa consultas parametrizadas.
+- **app/** — Peru Travel, agencia de turismo ficticia. Backend en Node.js + Express (`server.js`, API JSON) y frontend en React + Vite (`app/web/`). Vulnerable a inyección SQL en el buscador, el detalle de tours y el login. Con `MODO_SEGURO=1` usa consultas parametrizadas.
 - **proxysql/proxysql.cnf** — configuración y reglas del firewall (inyección SQL, DDL/DCL, control por usuario, auditoría).
 - **db/init.sql** — esquema y datos ficticios.
 - **firewall.ps1** — comando `on` / `off` / `aprender` / `guardar` / `estado`.
@@ -30,6 +30,29 @@ docker compose up -d --build
 - Activar firewall: `.\firewall.ps1 on`
 - Desactivar: `.\firewall.ps1 off`
 
+### Desarrollo del frontend (opcional)
+
+Con la base de datos y ProxySQL levantados en Docker:
+
+```powershell
+cd app; npm install; npm run dev:api          # API en http://localhost:3000
+cd app/web; npm install; npm run dev          # React en http://localhost:5173 (reenvía /api al backend)
+```
+
+En Docker no hace falta: la imagen compila el frontend y Express sirve la API y la página en el puerto 8080.
+
+## Puntos vulnerables (API)
+
+El navegador solo muestra la página; la inyección ocurre en el backend, que arma el SQL con la entrada recibida. Estos son los endpoints a atacar con Burp o sqlmap:
+
+| Endpoint | Parámetro | Ejemplo |
+|---|---|---|
+| `GET /api/buscar` | `q` | `/api/buscar?q=' UNION SELECT id,usuario,password,rol,1,1 FROM usuarios-- -` |
+| `GET /api/tour` | `id` | `/api/tour?id=1 OR 1=1` |
+| `POST /api/login` | `usuario`, `password` (JSON o formulario) | `usuario=admin' -- ` |
+
+Ejemplo con sqlmap desde Kali: `sqlmap -u "http://192.168.56.1:8080/api/buscar?q=cusco" --batch`
+
 ## Casos de uso
 
 1. Bloqueo de inyección SQL a nivel de base de datos
@@ -40,4 +63,4 @@ docker compose up -d --build
 
 ## Herramientas
 
-MariaDB 10.11 · ProxySQL 2.7.3 · Node.js 20 · Docker · Kali Linux (VirtualBox)
+MariaDB 10.11 · ProxySQL 2.7.3 · Node.js 22 · Express · React + Vite · Docker · Kali Linux (VirtualBox)

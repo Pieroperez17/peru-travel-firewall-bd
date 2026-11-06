@@ -3,16 +3,18 @@
  * Uso exclusivo en el laboratorio local del curso de Ciberseguridad.
  * No desplegar en internet.
  *
+ * Backend: API JSON en Express. El frontend es React (Vite) y vive en ./web.
  * La app se conecta a ProxySQL (firewall de base de datos), nunca directo a MariaDB.
  *
  * MODO_SEGURO=0 -> consultas armadas concatenando la entrada del usuario (vulnerables)
  * MODO_SEGURO=1 -> consultas parametrizadas (la correccion recomendada)
- * MOSTRAR_SQL=1 -> muestra en pantalla la consulta enviada (con fines didacticos)
+ * MOSTRAR_SQL=1 -> devuelve la consulta enviada para mostrarla en pantalla (con fines didacticos)
  */
 const express = require('express');
 const session = require('express-session');
 const mysql = require('mysql2');
 const path = require('path');
+const fs = require('fs');
 
 const MODO_SEGURO = process.env.MODO_SEGURO === '1';
 const MOSTRAR_SQL = process.env.MOSTRAR_SQL !== '0';
@@ -29,46 +31,41 @@ const pool = mysql.createPool({
 }).promise();
 
 const app = express();
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-app.use(express.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false })); // tambien acepta formularios (util para sqlmap/Burp)
 app.use(session({
   secret: process.env.SESSION_SECRET || 'laboratorio-peru-travel',
   resave: false,
   saveUninitialized: false,
 }));
 
-// Variables disponibles en todas las vistas
-app.use((req, res, next) => {
-  res.locals.usuario = req.session.usuario || null;
-  res.locals.modoSeguro = MODO_SEGURO;
-  res.locals.mostrarSql = MOSTRAR_SQL;
-  res.locals.sql = null;
-  res.locals.error = null;
-  next();
-});
-
-// Ejecuta una consulta y devuelve { filas, sql, error } sin romper la pagina.
-// El mensaje de error se muestra tal cual: asi se ve en pantalla cuando el firewall bloquea.
+// Ejecuta una consulta y devuelve { filas, sql, error } sin romper la respuesta.
+// El mensaje de error se devuelve tal cual: asi se ve en pantalla cuando el firewall bloquea.
 async function consultar(sql, params = []) {
   const textoSql = params.length ? mysql.format(sql, params) : sql;
   try {
     const [filas] = await pool.query(sql, params);
-    return { filas, sql: textoSql, error: null };
+    return { filas, sql: MOSTRAR_SQL ? textoSql : null, error: null };
   } catch (e) {
-    return { filas: [], sql: textoSql, error: e.message };
+    return { filas: [], sql: MOSTRAR_SQL ? textoSql : null, error: e.message };
   }
 }
 
+const api = express.Router();
+
+// ---------- Estado de la app (modo y sesion) ----------
+api.get('/estado', (req, res) => {
+  res.json({ modoSeguro: MODO_SEGURO, mostrarSql: MOSTRAR_SQL, usuario: req.session.usuario || null });
+});
+
 // ---------- Inicio: catalogo de tours ----------
-app.get('/', async (req, res) => {
+api.get('/tours', async (req, res) => {
   const r = await consultar('SELECT id, nombre, destino, region, dias, precio FROM tours ORDER BY id');
-  res.render('inicio', { tours: r.filas, error: r.error });
+  res.json({ tours: r.filas, error: r.error });
 });
 
 // ---------- Buscador (caso 1: inyeccion SQL) ----------
-app.get('/buscar', async (req, res) => {
+api.get('/buscar', async (req, res) => {
   const q = req.query.q || '';
   let r;
   if (MODO_SEGURO) {
@@ -80,11 +77,11 @@ app.get('/buscar', async (req, res) => {
     r = await consultar(
       `SELECT id, nombre, destino, region, dias, precio FROM tours WHERE nombre LIKE '%${q}%' OR destino LIKE '%${q}%'`);
   }
-  res.render('buscar', { q, tours: r.filas, sql: r.sql, error: r.error });
+  res.json({ q, tours: r.filas, sql: r.sql, error: r.error });
 });
 
 // ---------- Detalle de un tour (caso 1: inyeccion SQL numerica) ----------
-app.get('/tour', async (req, res) => {
+api.get('/tour', async (req, res) => {
   const id = req.query.id || '1';
   let r;
   if (MODO_SEGURO) {
@@ -96,22 +93,20 @@ app.get('/tour', async (req, res) => {
   const resenas = await consultar(
     'SELECT autor, comentario, puntaje, DATE_FORMAT(fecha, \'%d/%m/%Y\') AS fecha FROM resenas WHERE tour_id = ? ORDER BY fecha DESC',
     [Number(id) || 0]);
-  res.render('tour', { id, tours: r.filas, resenas: resenas.filas, sql: r.sql, error: r.error });
+  res.json({ id, tours: r.filas, resenas: resenas.filas, sql: r.sql, error: r.error });
 });
 
 // ---------- Publicar resena (trafico normal para la lista blanca) ----------
-app.post('/tour/resena', async (req, res) => {
+api.post('/tour/resena', async (req, res) => {
   const { tour_id, autor, comentario, puntaje } = req.body;
-  await consultar(
+  const r = await consultar(
     'INSERT INTO resenas (tour_id, autor, comentario, puntaje, fecha) VALUES (?, ?, ?, ?, NOW())',
-    [Number(tour_id) || 0, (autor || 'Anonimo').slice(0, 60), (comentario || '').slice(0, 500), Number(puntaje) || 5]);
-  res.redirect(`/tour?id=${Number(tour_id) || 1}`);
+    [Number(tour_id) || 0, String(autor || 'Anonimo').slice(0, 60), String(comentario || '').slice(0, 500), Number(puntaje) || 5]);
+  res.status(r.error ? 500 : 201).json({ ok: !r.error, error: r.error });
 });
 
 // ---------- Login del personal (caso 1: inyeccion SQL en autenticacion) ----------
-app.get('/login', (req, res) => res.render('login', { mensaje: null }));
-
-app.post('/login', async (req, res) => {
+api.post('/login', async (req, res) => {
   const u = req.body.usuario || '';
   const p = req.body.password || '';
   let r;
@@ -125,27 +120,37 @@ app.post('/login', async (req, res) => {
   }
   if (!r.error && r.filas.length > 0) {
     req.session.usuario = r.filas[0];
-    return res.redirect('/admin');
+    return res.json({ usuario: r.filas[0], sql: r.sql });
   }
-  res.render('login', {
+  res.status(401).json({
     mensaje: r.error ? null : 'Usuario o contrasena incorrectos',
     sql: r.sql, error: r.error,
   });
 });
 
-app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
+api.post('/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
 
 // ---------- Panel interno: reservas con datos de clientes (acceso legitimo a datos sensibles) ----------
-app.get('/admin', async (req, res) => {
-  if (!req.session.usuario) return res.redirect('/login');
+api.get('/admin', async (req, res) => {
+  if (!req.session.usuario) return res.status(401).json({ error: 'Sesion requerida' });
   const r = await consultar(
     `SELECT r.id, c.nombres, c.dni, c.correo, t.nombre AS tour, DATE_FORMAT(r.fecha_viaje, '%d/%m/%Y') AS fecha, r.personas, r.total
        FROM reservas r
        JOIN clientes c ON c.id = r.cliente_id
        JOIN tours t ON t.id = r.tour_id
       ORDER BY r.fecha_viaje`);
-  res.render('admin', { reservas: r.filas, error: r.error });
+  res.json({ usuario: req.session.usuario, reservas: r.filas, error: r.error });
 });
+
+app.use('/api', api);
+
+// ---------- Frontend React compilado (web/dist) ----------
+const DIST = path.join(__dirname, 'web', 'dist');
+if (fs.existsSync(DIST)) {
+  app.use(express.static(DIST));
+  // Rutas del frontend (/, /buscar, /tour, /login, /admin) -> index.html; React Router decide que mostrar
+  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(DIST, 'index.html')));
+}
 
 const PORT = Number(process.env.PORT || 3000);
 app.listen(PORT, () => {
