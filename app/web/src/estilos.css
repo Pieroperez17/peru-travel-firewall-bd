@@ -71,3 +71,5 @@ button:hover { background: var(--rojo-oscuro); }
 .tabla th { background: #efe4d6; }
 .pie { text-align: center; color: var(--suave); font-size: 13px; padding: 24px 16px; }
 @media (max-width: 640px) { .cabecera { padding: 12px 16px; } .portada { padding: 28px 18px; } }
+.enlace { padding: 0; background: none; color: var(--suave); font: inherit; font-weight: 600; }
+.enlace:hover { background: none; color: var(--rojo); }
